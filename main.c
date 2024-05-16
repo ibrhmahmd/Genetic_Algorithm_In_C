@@ -1,14 +1,15 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <time.h>
-#include <math.h>
 #include <opencv2/opencv.hpp>
+#include <vector>
+#include <iostream>
+#include <cstdlib>
+#include <ctime>
 
 // Define image dimensions
 #define WIDTH 200
 #define HEIGHT 200
 
 using namespace cv;
+using namespace std;
 
 // to generate random binary image
 void generate_random_binary_image(Mat& image) {
@@ -20,7 +21,7 @@ image.at<uchar>(i, j) = rand() % 2 ? 255 : 0;
 }
 
 // to calculate fitness
-double calculate_fitness(Mat& image, Mat& target_image) {
+double calculate_fitness(const Mat& image, const Mat& target_image) {
 double mse = 0.0;
 for (int i = 0; i < HEIGHT; i++) {
 for (int j = 0; j < WIDTH; j++) {
@@ -32,29 +33,31 @@ return -mse; // Negative MSE because we want to maximize fitness
 }
 
 // to select parents
-void select_parents(Mat* population, double *fitness_scores, int num_parents, Mat* selected_parents) {
-    double total_fitness = 0.0;
-    for (int i = 0; i < HEIGHT; i++) {
-        total_fitness += fitness_scores[i];
-    }
-    for (int i = 0; i < num_parents; i++) {
-        double rand_num = (double)rand() / RAND_MAX * total_fitness;
-        double sum = 0.0;
-        for (int j = 0; j < HEIGHT; j++) {
-            sum += fitness_scores[j];
-            if (sum >= rand_num) {
-                selected_parents[i] = population[j];
-                break;
-            }
-        }
-    }
+void select_parents(const vector<Mat>& population, const vector<double>& fitness_scores, int num_parents, vector<Mat>& selected_parents) {
+double total_fitness = 0.0;
+for (double score : fitness_scores) {
+total_fitness += score;
+}
+for (int i = 0; i < num_parents; i++) {
+double rand_num = (double)rand() / RAND_MAX * total_fitness;
+double sum = 0.0;
+for (size_t j = 0; j < population.size(); j++) {
+sum += fitness_scores[j];
+if (sum >= rand_num) {
+selected_parents[i] = population[j];
+break;
+}
+}
+}
 }
 
 // to perform crossover
-void crossover(Mat& parent1, Mat& parent2, Mat& offspring) {
+void crossover(const Mat& parent1, const Mat& parent2, Mat& offspring) {
 int crossover_point = rand() % (WIDTH - 1) + 1;
-for (int i = 0; i < WIDTH; i++) {
-offspring.at<uchar>(i) = i < crossover_point ? parent1.at<uchar>(i) : parent2.at<uchar>(i);
+for (int i = 0; i < HEIGHT; i++) {
+for (int j = 0; j < WIDTH; j++) {
+offspring.at<uchar>(i, j) = j < crossover_point ? parent1.at<uchar>(i, j) : parent2.at<uchar>(i, j);
+}
 }
 }
 
@@ -70,17 +73,17 @@ image.at<uchar>(i, j) = rand() % 256;
 }
 
 // to replace population with offspring
-void replace_population(Mat* population, Mat* offspring, double *fitness_scores, int num_offspring) {
-    for (int i = 0; i < num_offspring; i++) {
-        int least_fit_index = 0;
-        for (int j = 1; j < HEIGHT; j++) {
-            if (fitness_scores[j] < fitness_scores[least_fit_index]) {
-                least_fit_index = j;
-            }
-        }
-        population[least_fit_index] = offspring[i];
-        fitness_scores[least_fit_index] = calculate_fitness(offspring[i], target_image);
-    }
+void replace_population(vector<Mat>& population, const vector<Mat>& offspring, vector<double>& fitness_scores, const Mat& target_image) {
+for (const Mat& child : offspring) {
+int least_fit_index = 0;
+for (size_t j = 1; j < population.size(); j++) {
+if (fitness_scores[j] < fitness_scores[least_fit_index]) {
+least_fit_index = j;
+}
+}
+population[least_fit_index] = child;
+fitness_scores[least_fit_index] = calculate_fitness(child, target_image);
+}
 }
 
 int main() {
@@ -89,6 +92,13 @@ int main() {
 
     // Load target image
     Mat target_image = imread("path_to_target_image.png", IMREAD_GRAYSCALE);
+    if (target_image.empty()) {
+        cerr << "Error: Could not load target image" << endl;
+        return -1;
+    }
+
+    // Resize target image to match dimensions
+    resize(target_image, target_image, Size(WIDTH, HEIGHT));
 
     // Create window for displaying image
     namedWindow("Best Image", WINDOW_NORMAL);
@@ -99,8 +109,8 @@ int main() {
     double mutation_rate = 0.01;
 
     // Initialize population
-    Mat population[HEIGHT];
-    for (int i = 0; i < HEIGHT; i++) {
+    vector<Mat> population(population_size);
+    for (int i = 0; i < population_size; i++) {
         population[i] = Mat(HEIGHT, WIDTH, CV_8UC1);
         generate_random_binary_image(population[i]);
     }
@@ -108,14 +118,14 @@ int main() {
     // Genetic algorithm loop
     for (int generation = 0; generation < num_generations; generation++) {
         // Calculate fitness scores
-        double fitness_scores[HEIGHT];
-        for (int i = 0; i < HEIGHT; i++) {
+        vector<double> fitness_scores(population_size);
+        for (int i = 0; i < population_size; i++) {
             fitness_scores[i] = calculate_fitness(population[i], target_image);
         }
 
         // Find the index of the best image
         int best_image_index = 0;
-        for (int i = 1; i < HEIGHT; i++) {
+        for (int i = 1; i < population_size; i++) {
             if (fitness_scores[i] > fitness_scores[best_image_index]) {
                 best_image_index = i;
             }
@@ -127,12 +137,12 @@ int main() {
         waitKey(1);
 
         // Perform selection, crossover, mutation, and replacement
-        Mat selected_parents[2];
-        Mat offspring = Mat(HEIGHT, WIDTH, CV_8UC1);
+        vector<Mat> selected_parents(2);
+        vector<Mat> offspring(1, Mat(HEIGHT, WIDTH, CV_8UC1));
         select_parents(population, fitness_scores, 2, selected_parents);
-        crossover(selected_parents[0], selected_parents[1], offspring);
-        mutate(offspring, mutation_rate);
-        replace_population(population, &offspring, fitness_scores, 1);
+        crossover(selected_parents[0], selected_parents[1], offspring[0]);
+        mutate(offspring[0], mutation_rate);
+        replace_population(population, offspring, fitness_scores, target_image);
     }
 
     return 0;
