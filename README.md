@@ -1,4 +1,4 @@
-# A Aaive Attempt To Write a Genetic Algorithm Image Generator
+# A Naive Attempt To Write a Genetic Algorithm Image Generator
 
 This project implements a genetic algorithm to generate a binary image that evolves to match a target image. The algorithm uses selection, crossover, mutation, and replacement to iteratively improve the population of images.
 
